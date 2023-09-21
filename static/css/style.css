@@ -12,3 +12,28 @@
 .icon-block .material-icons {
 	font-size: inherit;
 }
+
+.Monday, .Tuesday, .Wednesday, .Thursday, .Friday {
+  background-color: #4CAF50;
+}
+
+.Saturday, .Sunday {
+  background-color: #f44336;
+}
+
+.today {
+  background-color: #2196F3;
+}
+
+.details, .param_details {
+  display: none;
+  width: 0;
+}
+
+.show-details .details {
+  display: table-cell;
+}
+
+.show-details .param_details {
+  display: table-cell;
+}

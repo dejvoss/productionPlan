@@ -1,16 +1,16 @@
 {% extends 'base.html' %}
 {% block content %}
-    <div class="section no-pad-bot" id="index-banner">
-        <div class="container">
-            <h1 class="header center orange-text">DTC Planning Tool</h1>
-            <div class="row center">
-                <h5 class="header col s12 light">Start from uploading forecast file.</h5>
-                <p>Prepare file to have just two columns - date and qty.</p>
+<div class="section no-pad-bot" id="index-banner">
+    <div class="container">
+        <h1 class="header center orange-text">DTC Planning Tool</h1>
+        <div class="row center">
+            <h5 class="header col s12 light">Latest forecast was loaded on {{ latest_forecast_upload }}</h5>
+            <div class="col s6">
+                <p>If you wish to update forecast, please prepare file to have just two columns - date and qty.</p>
                 <p>Both(csv and xlsx) are works.</p>
-
             </div>
-            <div class="row center">
-                <form method="post" action="/upload_forecast" enctype="multipart/form-data">
+            <div class="col s6">
+                <form action="/upload_forecast" method="POST" enctype="multipart/form-data">
                     <div class="file-field input-field">
                         <div class="btn">
                             <span>File</span>
@@ -24,47 +24,104 @@
                         <i class="material-icons right">send</i>
                     </button>
                 </form>
-
-            </div>
-            <br><br>
-
-        </div>
-    </div>
-    <div class="container">
-        <div class="section">
-            <div class="row">
-                <div id="data-container"></div>
             </div>
         </div>
+        <br><br>
     </div>
+</div>
+<div class="container">
+    <div class="section-parameters">
+        <div class="row">
+            <form class="col s12" method='post' action='\update_parameters'>
+                <div class="row">
+
+                    <div class="input-field col s3">
+                        <input type="number" name="picking-cap" id="picking-cap" value="{{ planning_parameters.picking_capacity }}" min="0">
+                        <label for="picking-cap">Max picking capacity</label>
+                    </div>
+                    <div class="input-field col s3">
+                        
+                        <input type="number" name="packing-cap" id="packing-cap" min="0" value="{{ planning_parameters.packing_capacity }}">
+                        <label for="packing-cap">Max packing capacity</label>
+                    </div>
+                    <div class="input-field col s3">
+                        <label for="forecast-add">Extra % to the forecast</label>
+                        <input type="number" name="forecast-add" id="forecast-add" min="-100" max="100" value="{{ planning_parameters.forecast_addition }}">
+                    </div>
+                    <div class="col s3">
+                        <button class="btn waves-effect waves-light" type="submit" name="action" id="upload-btn">Update
+                            <i class="material-icons right">send</i>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<div class="divider"></div>
+<div class="container">
+    <div class="section">
+        <div class="row">
+            <div id="data-container">
+                {% if forecasts %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Weekday</th>
+                            <th>Forecast Qty <button class="btn btn-small btn-floating" type="button" id="toggle-btn"
+                                    title="Click to see details">+</button></th>
+                            <th class="details">Urgent</th>
+                            <th class="details">Standard</th>
+                            <th class="action-col">Daily parameters <button class="btn btn-small btn-floating" type="button" id="parameter-toggle-btn"
+                                title="Click to see details">+</button></th>
+                            <th class="param_details">Picking capacity</th>
+                            <th class="param_details">Packing capacity</th>
+                            <th class="param_details">Forecast add</th>
+                            <th>Download</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for forecast in forecasts %}
+                        {% if forecast.forecast_date|format_date('%Y-%m-%d') == today|format_date('%Y-%m-%d') %}
+                        <tr class="today">
+                            {% else %}
+                        <tr class="{{ forecast.forecast_date|week_day }}">
+                            {% endif %}
+                            <td>{{ forecast.forecast_date|format_date('%Y-%m-%d') }}</td>
+                            <td>{{ forecast.forecast_date|week_day }}</td>
+                            <td>{{ forecast.forecast_qty }}</td>
+                            <td class="details"> {{ (forecast.forecast_qty * 0.1)|int }}</td>
+                            <td class="details"> {{ forecast.forecast_qty - (forecast.forecast_qty * 0.1)|int }}</td>
+                            <td class="action-col"></td>
+                            <td class="param_details">{{ forecast.picking_capacity }}</td>
+                            <td class="param_details">{{ forecast.packing_capacity }}</td>
+                            <td class="param_details">{{ forecast.forecast_addition }}%</td>
+                            <td>{{ (forecast.forecast_qty * (100 + forecast.forecast_addition) / 100)|int }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p>Please upload forecast first</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 {% block extra_js %}
-    <script>
-        async function fetchForecastData() {
-            const fileInput = document.getElementById("fileInput");
-            const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
+<script>
+    let toggleBtn = document.getElementById('toggle-btn');
+    toggleBtn.addEventListener('click', function () {
+        let table = document.querySelector('table');
+        // replace elements in table wiht details class to show-details
+        
+        table.classList.toggle('show-details');
+        toggleBtn.innerText = table.classList.contains('show-details') ? '-' : '+';
+    })
 
-            try {
-                const response = await fetch('/upload_forecast', {
-                    method: 'POST',
-                    body: formData
-                });
 
-                if (response.ok) {
-                    const data = await response.json();
-                    alert(data.message);  // Wyświetl powiadomienie o udanym przesłaniu
-                    fetchForecastData();  // Ponownie pobierz dane
-                } else {
-                    alert("Failed to upload file.");
-                }
-
-            } catch (err) {
-                console.error(err);
-            }
-        }
-
-        document.getElementById("upload-btn").addEventListener("click", fetchForecastData);
-    </script>
+</script>
 {% endblock %}
 ```
