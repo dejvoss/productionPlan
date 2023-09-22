@@ -3,6 +3,7 @@
 <div class="section no-pad-bot" id="index-banner">
     <div class="container">
         <h1 class="header center orange-text">DTC Planning Tool</h1>
+        <a href="{{ url_for('calculate_production') }}" class="btn btn-large">CALCULATE PLANNING</a>
         <div class="row center">
             <h5 class="header col s12 light">Latest forecast was loaded on {{ latest_forecast_upload }}</h5>
             <div class="col s6">
@@ -11,6 +12,7 @@
             </div>
             <div class="col s6">
                 <form action="/upload_forecast" method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
                     <div class="file-field input-field">
                         <div class="btn">
                             <span>File</span>
@@ -33,6 +35,7 @@
     <div class="section-parameters">
         <div class="row">
             <form class="col s12" method='post' action='\update_parameters'>
+                <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
                 <div class="row">
 
                     <div class="input-field col s3">
@@ -64,21 +67,29 @@
         <div class="row">
             <div id="data-container">
                 {% if forecasts %}
+                <form action="/update_daily_parameters" method="post">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+                    <input type="submit" value="Update" class="btn btn-small" id="update-btn" title="Click to update daily parameters">
                 <table>
                     <thead>
                         <tr>
+                            <th colspan="2">Days</th>
+                            <th colspan="3" class="center-align">Forecast <button class="btn btn-small btn-floating" type="button" id="forecast-toggle-btn"
+                                    title="Click to see details">+</button></th>
+                            <th colspan="3" class="center-align">Daily parameters <!--<button class="btn btn-small btn-floating" type="button" id="parameter-toggle-btn"
+                            title="Click to see details">+</button></th>-->
+                            <th colspan="1">Download</th>
+                        </tr>
+                        <tr>
                             <th>Date</th>
                             <th>Weekday</th>
-                            <th>Forecast Qty <button class="btn btn-small btn-floating" type="button" id="toggle-btn"
-                                    title="Click to see details">+</button></th>
-                            <th class="details">Urgent</th>
-                            <th class="details">Standard</th>
-                            <th class="action-col">Daily parameters <button class="btn btn-small btn-floating" type="button" id="parameter-toggle-btn"
-                                title="Click to see details">+</button></th>
-                            <th class="param_details">Picking capacity</th>
-                            <th class="param_details">Packing capacity</th>
-                            <th class="param_details">Forecast add</th>
-                            <th>Download</th>
+                            <th>Total Forecast</th>
+                            <th class="forecast-details">Urgent</th>
+                            <th class="forecast-details">Standard</th>
+                            <th class="">Picking capacity</th>
+                            <th class="">Packing capacity</th>
+                            <th class="">Forecast add</th>
+                            <th>Download qty</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -86,22 +97,36 @@
                         {% if forecast.forecast_date|format_date('%Y-%m-%d') == today|format_date('%Y-%m-%d') %}
                         <tr class="today">
                             {% else %}
-                        <tr class="{{ forecast.forecast_date|week_day }}">
+                        <tr class="{{ forecast.forecast_date|week_day }} {% if forecast.packing_capacity > 0 %}working-day{% else %}not-working-day{% endif %}">
                             {% endif %}
                             <td>{{ forecast.forecast_date|format_date('%Y-%m-%d') }}</td>
                             <td>{{ forecast.forecast_date|week_day }}</td>
                             <td>{{ forecast.forecast_qty }}</td>
-                            <td class="details"> {{ (forecast.forecast_qty * 0.1)|int }}</td>
-                            <td class="details"> {{ forecast.forecast_qty - (forecast.forecast_qty * 0.1)|int }}</td>
-                            <td class="action-col"></td>
-                            <td class="param_details">{{ forecast.picking_capacity }}</td>
-                            <td class="param_details">{{ forecast.packing_capacity }}</td>
-                            <td class="param_details">{{ forecast.forecast_addition }}%</td>
-                            <td>{{ (forecast.forecast_qty * (100 + forecast.forecast_addition) / 100)|int }}</td>
+                            <td class="forecast-details"> {{ (forecast.forecast_qty * 0.1)|int }}</td>
+                            <td class="forecast-details"> {{ forecast.forecast_qty - (forecast.forecast_qty * 0.1)|int }}</td>
+                            <td class="">
+                                <label for="picking_capacity-{{ forecast.parameter_id }}" hidden>Picking capacity</label>
+                                <input class="white table-inputs" type="number" name="picking_capacity-{{ forecast.parameter_id }}" 
+                                id="picking_capacity-{{ forecast.parameter_id }}" min="0" step="500" value="{{ forecast.picking_capacity }}">
+                               
+                            </td>
+                            <td class="">
+                                <label for="packing_capacity-{{ forecast.parameter_id }}" hidden>Packing capacity</label>
+                                <input class="white table-inputs" type="number" name="packing_capacity-{{ forecast.parameter_id }}" 
+                                id="packing_capacity-{{ forecast.parameter_id }}" min="0" step="500" value="{{ forecast.packing_capacity }}">
+                            </td>
+                            <td class="">
+                                <label for="forecast_addition-{{ forecast.parameter_id }}" hidden>Extra % to the forecast</label>
+                                <input class="white table-inputs" type="number" name="forecast_addition-{{ forecast.parameter_id }}" 
+                                id="forecast_addition-{{ forecast.parameter_id }}" min="-100" max="100" step="1" value="{{ forecast.forecast_addition }}">
+                            </td>
+                            <td>{% if forecast.forecast_addition %}{{ (forecast.forecast_qty * (100 + forecast.forecast_addition) / 100)|int }}{% else %}{{ forecast.forecast_qty }}{% endif %}</td>
+                          
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
+            </form>
                 {% else %}
                 <p>Please upload forecast first</p>
                 {% endif %}
@@ -112,14 +137,24 @@
 {% endblock %}
 {% block extra_js %}
 <script>
-    let toggleBtn = document.getElementById('toggle-btn');
-    toggleBtn.addEventListener('click', function () {
-        let table = document.querySelector('table');
-        // replace elements in table wiht details class to show-details
-        
-        table.classList.toggle('show-details');
-        toggleBtn.innerText = table.classList.contains('show-details') ? '-' : '+';
-    })
+    document.getElementById('forecast-toggle-btn').addEventListener('click', function () {
+        toggleDetails('forecast-details', this);
+    });
+
+    document.getElementById('parameter-toggle-btn').addEventListener('click', function () {
+        toggleDetails('paramater-details', this);
+    });
+
+    function toggleDetails(detailClass, button) {
+        let details = document.querySelectorAll('.' + detailClass);
+        details.forEach(function (detail) {
+            detail.classList.toggle('hidden');
+        })
+
+        // change button text
+        console.log(button.textContent);
+        button.textContent = button.textContent === '+' ? '-' : '+';
+    }
 
 
 </script>

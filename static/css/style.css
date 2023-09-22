@@ -21,19 +21,35 @@
   background-color: #f44336;
 }
 
+.Saturday.working-day, .Sunday.working-day {
+  background-color: #ffff;
+  color: #4CAF50
+}
+
+.Monday.not-working-day, .Tuesday.not-working-day, .Wednesday.not-working-day, .Thursday.not-working-day, .Friday.not-working-day {
+  background-color: #ffff;
+  color: #f44336
+}
+
+
 .today {
   background-color: #2196F3;
 }
 
-.details, .param_details {
+.paramater-details, .forecast-details {
   display: none;
   width: 0;
 }
 
-.show-details .details {
+.hidden {
   display: table-cell;
 }
 
-.show-details .param_details {
-  display: table-cell;
+
+.table-inputs {
+  border: 1px solid white!important;
+  border-radius: 20px!important;
+  width: 70px!important;
+  padding-left: 5px!important;
+
 }

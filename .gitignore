@@ -12,3 +12,8 @@ __pychache__\
 
 instance
 instance\
+
+.*.csv
+*.csv
+*.xlsx
+*.xls
