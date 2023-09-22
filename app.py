@@ -4,6 +4,7 @@ from sqlalchemy import CheckConstraint
 import pandas as pd
 import io
 from datetime import datetime
+import numpy as np
 
 
 def format_date(value, format='%Y-%m-%d'):
@@ -162,6 +163,87 @@ def planning():
         latest_forecast_upload=latest_upload_date[0][0],
         planning_parameters=planning_parameters
         )
+
+
+@app.route('/update_daily_parameters', methods=['POST'])
+def update_daily_parameters():
+    if request.method == 'POST':
+        for key, value in request.form.items():
+            if key == 'csrfmiddlewaretoken':
+                continue
+            parameter_id = int(key.split('-')[-1])
+            if key.startswith('picking_capacity'):
+                parameter = PlanParameters.query.get(parameter_id)
+                parameter.picking_capacity = int(value)
+            elif key.startswith('packing_capacity'):
+                parameter = PlanParameters.query.get(parameter_id)
+                parameter.packing_capacity = int(value)
+            elif key.startswith('forecast_addition'):
+                parameter = PlanParameters.query.get(parameter_id)
+                parameter.forecast_addition = int(value)
+            else:
+                return jsonify({'error': 'invalid parameters'}), 400
+        db.session.commit()
+        return redirect('/planning')
+    else:
+        return jsonify({'error': 'method not allowed'}), 405
+    
+
+
+@app.route('/calculate_production')
+def calculate_production():
+    latest_upload_date = db.session.query(db.func.max(Forecast.upload_date))
+    planning_parameters = PlanParameters.query.first()
+    planning_data = db.session().query(
+        Forecast.forecast_date, Forecast.forecast_qty, PlanParameters.picking_capacity,
+          PlanParameters.packing_capacity, PlanParameters.forecast_addition, PlanParameters.id.label('parameter_id')
+          ).outerjoin(
+              PlanParameters, Forecast.forecast_date==PlanParameters.work_date
+              ).filter(
+                  Forecast.upload_date==latest_upload_date
+                  ).filter(
+                      Forecast.forecast_date >= datetime.today().date()
+                      ).all()
+    # load planning_data to pandas dataframe
+    df = pd.DataFrame(planning_data)
+    df['download qty'] = df['forecast_qty'] * (100 + df['forecast_addition']) / 100
+    df['download qty'] = df['download qty'].round(0).astype(int)
+    # mark if day is working day based on the picking and packing capacity
+    # if picking capacity plus packing capacity is zero, it is a non-working day
+    df['working day'] = (df['picking_capacity'] + df['packing_capacity']) > 0 # it will be not working day, but can help to calculate cumulative download
+    # calculate cumulative download
+    # if previous day is not working day, add previous cumulative download to current day download
+    # else set current day download as current day cumulative download
+    # repeat as many times as many non-working days in a row   
+    # caluclate max not working days in a row
+    df['not_working'] = np.where(df['working day'] == False, 1, 0)
+    # Create a helper column that increments when the 'not_working' status changes
+    df['block'] = (df['not_working'].shift(1) != df['not_working']).astype(int).cumsum()
+    # Calculate the size of each block of non-working days
+    counts = df[df['not_working'] == 1].groupby('block')['not_working'].count()
+    # Find the maximum count
+    max_non_work_days_in_row = counts.max()
+    df.drop(columns=['not_working', 'block'], inplace=True)
+    # initialize cumulative download as download qty
+    df['cumulative download'] = df['download qty']
+    # calculate cumulative download
+    # repeat as many times as many non-working days in a row
+    for day in range(0, max_non_work_days_in_row):
+        df['cumulative download'] = np.where(df['working day'].shift(1), df['download qty'], df['cumulative download'].shift(1) + df['download qty'])
+    
+    # calculate min daily min pick qty
+    df['leave on day 0'] = np.where(df['working day'], df['cumulative download'] * 0.15, 0)
+    df['min pick qty'] = np.where(df['working day'], (df['cumulative download'] + df['leave on day 0'].shift(-1)) / 2, 0)
+    df['extra qty'] = np.where(df['working day'], df['cumulative download'] - df['min pick qty'], 0)
+    print(df.info())
+    df['week nr'] = df['forecast_date'].dt.isocalendar().week
+    df['extra week qty'] = df.groupby('week nr')['extra qty'].transform('sum')
+    df['nr of working days'] = df[df['working day'] == True].groupby('week nr')['working day'].transform('count')
+    df['daily extra qty'] = df['extra week qty'] / df['nr of working days']
+    df['daily qty'] = df['min pick qty'] + df['daily extra qty']
+    df.to_csv('planning.csv', index=False, decimal=',', sep=';')
+    return redirect('/planning')
+
 
 
 if __name__ == '__main__':
